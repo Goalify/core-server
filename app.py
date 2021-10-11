@@ -1,6 +1,9 @@
+import json
+
 from flask import Flask, request, make_response, jsonify
 from flask_mysqldb import MySQL
 import yaml
+import ast
 import time
 import datetime
 import os
@@ -50,7 +53,7 @@ def show_table(table_name):
     """
     with app.app_context():
         cur = mysql.connection.cursor()
-        cur.execute(f'''SELECT * FROM {table_name};''')
+        cur.execute(f'''SELECT goal_id FROM {table_name};''')
         res = cur.fetchall()
         print(res)
         cur.close()
@@ -63,7 +66,7 @@ def get_goals():
     :return: a list of goals.
     """
     if request.method == 'POST':
-        user_id = request.form['user_id']
+        user_id = ast.literal_eval(request.data.decode())['user_id']
         command = f'''SELECT * FROM goals WHERE user_id = "{user_id}"'''
         cur = mysql.connection.cursor()
         try:
@@ -75,6 +78,8 @@ def get_goals():
         columns = [naming_dict_goals[col[0]] for col in cur.description]
         rows = [dict(zip(columns, row)) for row in cur.fetchall()]
         for row in rows:
+            row['published'] = row['published'] == 'true'
+        for row in rows:
             command = f'''SELECT * FROM milestones WHERE goal_id = "{row['id']}"'''
             try:
                 cur.execute(command)
@@ -84,6 +89,8 @@ def get_goals():
                 return make_response("Server Error", 500)
             columns = [naming_dict_milestones[col[0]] for col in cur.description]
             milestones = [dict(zip(columns, row)) for row in cur.fetchall()]
+            for milestone in milestones:
+                milestone['state'] = milestone['state'] == 'true'
             row['milestones'] = milestones
         rows = {'list': rows}
         return make_response(jsonify(rows), 200)
@@ -96,7 +103,8 @@ def add_goal():
     :return: the new goal id or error code.
     """
     if request.method == 'POST':
-        goal_details = request.form
+        print(request.data.decode())
+        goal_details = ast.literal_eval(request.data.decode())
         user_id = goal_details[naming_dict_goals['user_id']]
         publish_status = goal_details[naming_dict_goals['publish_status']]
         created_on = goal_details[naming_dict_goals['created_on']]
@@ -111,6 +119,7 @@ def add_goal():
         command = f'''INSERT INTO goals(user_id, publish_status, created_on, title, description, complete_status, 
         deadline, date_finished) VALUES ("{user_id}", "{publish_status}", "{created_on}", "{title}", "{description}", "{complete_status}", "{deadline}", "{date_finished}");'''
         try:
+            print(command)
             cur.execute(command)
             mysql.connection.commit()
         except:
@@ -127,8 +136,8 @@ def add_milestone():
     :return: the new milestone id or error code.
     """
     if request.method == 'POST':
-        print(request.form)
-        milestone_details = request.form
+        print(ast.literal_eval(request.data.decode()))
+        milestone_details = ast.literal_eval(request.data.decode())
         goal_id = milestone_details[naming_dict_milestones['goal_id']]
         title = milestone_details[naming_dict_milestones['title']]
         complete_status = milestone_details[naming_dict_milestones['complete_status']]
@@ -156,20 +165,23 @@ def remove_goal():
     :return: response http code.
     """
     if request.method == 'POST':
-        print(request.form)
-        goal_details = request.form
+        print(ast.literal_eval(request.data.decode()))
+        goal_details = ast.literal_eval(request.data.decode())
         goal_id = goal_details['id']
         cur = mysql.connection.cursor()
         # command = '''DELETE FROM goals where goal_id = ?'''
-        command = f'''DELETE FROM goals where goal_id = "{goal_id}"'''
         try:
-            cur.execute(command)
+
             # command = '''DELETE FROM milestones where goal_id = ?'''
-            command = f'''DELETE FROM milestones where goal_id = "{goal_id}"'''
+            command = f'''DELETE FROM milestones where goal_id = {goal_id}'''
+            cur.execute(command)
+
+            command = f'''DELETE FROM goals where goal_id = {goal_id};'''
             cur.execute(command)
             mysql.connection.commit()
-        except:
+        except Exception as e:
             mysql.connection.rollback()
+            print(e)
             return make_response("Server Error", 500)
         cur.close()
         return make_response("OK", 200)
@@ -182,8 +194,9 @@ def remove_milestone():
     :return: response http code.
     """
     if request.method == 'POST':
-        print(request.form)
-        milestone_details = request.form
+        print(ast.literal_eval(request.data.decode()))
+        milestone_details = ast.literal_eval(request.data.decode())
+        print(milestone_details)
         milestone_id = milestone_details['id']
         cur = mysql.connection.cursor()
         # command = '''DELETE FROM milestones where milestone_id = ?'''
@@ -206,7 +219,7 @@ def edit_goal():
     :return: response http code.
     """
     if request.method == 'POST':
-        goal_details = request.form
+        goal_details = ast.literal_eval(request.data.decode())
         goal_id = goal_details[naming_dict_goals['goal_id']]
         user_id = goal_details[naming_dict_goals['user_id']]
         publish_status = goal_details[naming_dict_goals['publish_status']]
@@ -239,8 +252,8 @@ def edit_milestone():
     :return: response http code.
     """
     if request.method == 'POST':
-        print(request.form)
-        milestone_details = request.form
+        print(ast.literal_eval(request.data.decode()))
+        milestone_details = ast.literal_eval(request.data.decode())
         milestone_id = milestone_details[naming_dict_milestones['milestone_id']]
         goal_id = milestone_details[naming_dict_milestones['goal_id']]
         title = milestone_details[naming_dict_milestones['title']]
@@ -266,7 +279,7 @@ def discover():
     :return: the last public goals
     """
     if request.method == 'POST':
-        num_rows = request.form.get('num_rows', 5)
+        num_rows = ast.literal_eval(request.data.decode()).get('num_rows', 5)
         # command = '''SELECT * FROM goals LIMIT ?'''
         command = f'''SELECT * FROM goals LIMIT "{num_rows}"'''
         cur = mysql.connection.cursor()
@@ -291,7 +304,7 @@ def init_db():
         cur = mysql.connection.cursor()
         command = '''CREATE TABLE IF NOT EXISTS `goals` (
                           `goal_id` int PRIMARY KEY AUTO_INCREMENT,
-                          `user_id` int,
+                          `user_id` varchar(255),
                           `publish_status` varchar(255),
                           `created_on` varchar(63),
                           `title` varchar(255),
@@ -320,4 +333,4 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
-    app.run(host=IP, port=PORT)
+    app.run(host=IP, port=PORT, debug=True)
