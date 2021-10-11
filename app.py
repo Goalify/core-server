@@ -20,7 +20,7 @@ mysql = MySQL(app)
 
 naming_dict_goals = {
     'user_id': 'user_id',
-    'goal_id': 'goal_id',
+    'goal_id': 'id',
     'title': 'name',
     'description': 'description',
     'deadline': 'deadline',
@@ -30,12 +30,16 @@ naming_dict_goals = {
     'date_finished': 'dateFinished'
 }
 
+naming_dict_goals_rev = {val: key for key, val in naming_dict_goals.items()}
+
 naming_dict_milestones = {
-    'milestone_id': 'milestone_id',
+    'milestone_id': 'id',
     'goal_id': 'goal_id',
     'title': 'name',
     'complete_status': 'state',
 }
+
+naming_dict_milestones_rev = {val: key for key, val in naming_dict_milestones.items()}
 
 
 def show_table(table_name):
@@ -46,10 +50,7 @@ def show_table(table_name):
     """
     with app.app_context():
         cur = mysql.connection.cursor()
-        t = {"table_name": table_name}
-        # cur.execute('''SELECT * FROM %(table_name)s;''', t)
         cur.execute(f'''SELECT * FROM {table_name};''')
-        # cur.execute("SELECT * FROM 'goals';")
         res = cur.fetchall()
         print(res)
         cur.close()
@@ -63,7 +64,6 @@ def get_goals():
     """
     if request.method == 'POST':
         user_id = request.form['user_id']
-        # command = '''SELECT * FROM goals WHERE user_id = ?'''
         command = f'''SELECT * FROM goals WHERE user_id = "{user_id}"'''
         cur = mysql.connection.cursor()
         try:
@@ -71,20 +71,21 @@ def get_goals():
             mysql.connection.commit()
         except:
             mysql.connection.rollback()
-            return make_response(500)
+            return make_response("Server Error", 500)
         columns = [naming_dict_goals[col[0]] for col in cur.description]
         rows = [dict(zip(columns, row)) for row in cur.fetchall()]
         for row in rows:
-            command = f'''SELECT * FROM milestones WHERE goal_id = "{row['goal_id']}"'''
+            command = f'''SELECT * FROM milestones WHERE goal_id = "{row['id']}"'''
             try:
                 cur.execute(command)
                 mysql.connection.commit()
             except:
                 mysql.connection.rollback()
-                return make_response(500)
+                return make_response("Server Error", 500)
             columns = [naming_dict_milestones[col[0]] for col in cur.description]
             milestones = [dict(zip(columns, row)) for row in cur.fetchall()]
             row['milestones'] = milestones
+        rows = {'list': rows}
         return make_response(jsonify(rows), 200)
 
 
@@ -96,14 +97,14 @@ def add_goal():
     """
     if request.method == 'POST':
         goal_details = request.form
-        user_id = goal_details['user_id']
-        publish_status = goal_details['publish_status']
-        created_on = goal_details['created_on']
-        title = goal_details['title']
-        description = goal_details['description']
-        complete_status = goal_details['complete_status']
-        deadline = goal_details['deadline']
-        date_finished = goal_details['date_finished']
+        user_id = goal_details[naming_dict_goals['user_id']]
+        publish_status = goal_details[naming_dict_goals['publish_status']]
+        created_on = goal_details[naming_dict_goals['created_on']]
+        title = goal_details[naming_dict_goals['title']]
+        description = goal_details[naming_dict_goals['description']]
+        complete_status = goal_details[naming_dict_goals['complete_status']]
+        deadline = goal_details[naming_dict_goals['deadline']]
+        date_finished = goal_details[naming_dict_goals['date_finished']]
         cur = mysql.connection.cursor()
         # command = '''INSERT INTO goals(user_id, publish_status, created_on, title, description, complete_status, deadline,
         #                                date_finished) VALUES (?, ?, ?, ?, ?, ?, ?, ?);'''
@@ -114,9 +115,9 @@ def add_goal():
             mysql.connection.commit()
         except:
             mysql.connection.rollback()
-            return make_response(500)
+            return make_response("Server Error", 500)
         id = cur.lastrowid
-        return make_response(jsonify({'goal_id': id}), 200)
+        return make_response(jsonify({'id': id}), 200)
 
 
 @app.route('/add-milestone', methods=['POST'])
@@ -128,9 +129,9 @@ def add_milestone():
     if request.method == 'POST':
         print(request.form)
         milestone_details = request.form
-        goal_id = milestone_details['goal_id']
-        title = milestone_details['title']
-        complete_status = milestone_details['complete_status']
+        goal_id = milestone_details[naming_dict_milestones['goal_id']]
+        title = milestone_details[naming_dict_milestones['title']]
+        complete_status = milestone_details[naming_dict_milestones['complete_status']]
         cur = mysql.connection.cursor()
         # command = '''INSERT INTO milestones(goal_id, title, complete_status)
         #     VALUES (?, ?, ?);'''
@@ -142,10 +143,10 @@ def add_milestone():
             mysql.connection.commit()
         except:
             mysql.connection.rollback()
-            return make_response(500)
+            return make_response("Server Error", 500)
         id = cur.lastrowid
         cur.close()
-        return make_response(jsonify({'milestone_id': id}), 200)
+        return make_response(jsonify({'id': id}), 200)
 
 
 @app.route('/remove-goal', methods=['POST'])
@@ -157,21 +158,21 @@ def remove_goal():
     if request.method == 'POST':
         print(request.form)
         goal_details = request.form
-        goal_id = goal_details['goal_id']
+        goal_id = goal_details['id']
         cur = mysql.connection.cursor()
         # command = '''DELETE FROM goals where goal_id = ?'''
         command = f'''DELETE FROM goals where goal_id = "{goal_id}"'''
         try:
-            cur.execute(command, [goal_id])
+            cur.execute(command)
             # command = '''DELETE FROM milestones where goal_id = ?'''
             command = f'''DELETE FROM milestones where goal_id = "{goal_id}"'''
-            cur.execute(command, [goal_id])
+            cur.execute(command)
             mysql.connection.commit()
         except:
             mysql.connection.rollback()
-            return make_response(500)
+            return make_response("Server Error", 500)
         cur.close()
-        return make_response(200)
+        return make_response("OK", 200)
 
 
 @app.route('/remove-milestone', methods=['POST'])
@@ -183,7 +184,7 @@ def remove_milestone():
     if request.method == 'POST':
         print(request.form)
         milestone_details = request.form
-        milestone_id = milestone_details['milestone_id']
+        milestone_id = milestone_details['id']
         cur = mysql.connection.cursor()
         # command = '''DELETE FROM milestones where milestone_id = ?'''
         command = f'''DELETE FROM milestones where milestone_id = "{milestone_id}"'''
@@ -193,9 +194,9 @@ def remove_milestone():
             mysql.connection.commit()
         except:
             mysql.connection.rollback()
-            return make_response(500)
+            return make_response("Server Error", 500)
         cur.close()
-        return make_response(200)
+        return make_response("OK", 200)
 
 
 @app.route('/edit-goal', methods=['POST'])
@@ -206,15 +207,15 @@ def edit_goal():
     """
     if request.method == 'POST':
         goal_details = request.form
-        goal_id = goal_details['goal_id']
-        user_id = goal_details['user_id']
-        publish_status = goal_details['publish_status']
-        created_on = goal_details['created_on']
-        title = goal_details['title']
-        description = goal_details['description']
-        complete_status = goal_details['complete_status']
-        deadline = goal_details['deadline']
-        date_finished = goal_details['date_finished']
+        goal_id = goal_details[naming_dict_goals['goal_id']]
+        user_id = goal_details[naming_dict_goals['user_id']]
+        publish_status = goal_details[naming_dict_goals['publish_status']]
+        created_on = goal_details[naming_dict_goals['created_on']]
+        title = goal_details[naming_dict_goals['title']]
+        description = goal_details[naming_dict_goals['description']]
+        complete_status = goal_details[naming_dict_goals['complete_status']]
+        deadline = goal_details[naming_dict_goals['deadline']]
+        date_finished = goal_details[naming_dict_goals['date_finished']]
         cur = mysql.connection.cursor()
         # command = '''UPDATE goals SET publish_status = ?, created_on = ?, title = ?, description = ?,
         # complete_status = ?, deadline = ?, date_finished = ? WHERE goal_id = ?;'''
@@ -226,9 +227,9 @@ def edit_goal():
             mysql.connection.commit()
         except:
             mysql.connection.rollback()
-            return make_response(500)
+            return make_response("Server Error", 500)
         cur.close()
-        return make_response(200)
+        return make_response("OK", 200)
 
 
 @app.route('/edit-milestone', methods=['POST'])
@@ -240,10 +241,10 @@ def edit_milestone():
     if request.method == 'POST':
         print(request.form)
         milestone_details = request.form
-        milestone_id = milestone_details['milestone_id']
-        goal_id = milestone_details['goal_id']
-        title = milestone_details['title']
-        complete_status = milestone_details['complete_status']
+        milestone_id = milestone_details[naming_dict_milestones['milestone_id']]
+        goal_id = milestone_details[naming_dict_milestones['goal_id']]
+        title = milestone_details[naming_dict_milestones['title']]
+        complete_status = milestone_details[naming_dict_milestones['complete_status']]
         cur = mysql.connection.cursor()
         # command = '''UPDATE milestones SET title = ?, complete_status = ? WHERE milestone_id = ?;'''
         command = f'''UPDATE milestones SET title = "{title}", complete_status = "{complete_status}" WHERE milestone_id = "{milestone_id}";'''
@@ -253,9 +254,9 @@ def edit_milestone():
             mysql.connection.commit()
         except:
             mysql.connection.rollback()
-            return make_response(500)
+            return make_response("Server Error", 500)
         cur.close()
-        return make_response(200)
+        return make_response("OK", 200)
 
 
 @app.route('/discover', methods=['POST'])
@@ -319,4 +320,4 @@ def init_db():
 
 if __name__ == '__main__':
     init_db()
-    app.run(host=IP, port=PORT, debug=True)
+    app.run(host=IP, port=PORT)
